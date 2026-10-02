@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Co-Owner Audit Checklist & Veritabanı</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK (v10.8.0) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { 
+            getAuth, 
+            signInWithEmailAndPassword, 
+            GoogleAuthProvider, 
+            signInWithPopup, 
+            signOut, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAqXiFp2lSDeCWaRPxQKlgsxh48XI82lVY",
+            authDomain: "co-owner-audit.firebaseapp.com",
+            projectId: "co-owner-audit",
+            storageBucket: "co-owner-audit.firebasestorage.app",
+            messagingSenderId: "725922022244",
+            appId: "1:725922022244:web:a95d0a84d5b9c5e88af071",
+            measurementId: "G-BQ8P6K6DLC"
+        };
+
+        // Firebase Başlatma
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Global Değişkenler ve Fonksiyonları Window'a Bağlama
+        window.db = db;
+        window.auth = auth;
+        window.firestoreTools = { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy };
+
+        // Auth İşlevleri
+        window.loginWithEmail = async (email, password) => {
+            return signInWithEmailAndPassword(auth, email, password);
+        };
+
+        window.loginWithGoogle = async () => {
+            const provider = new GoogleAuthProvider();
+            return signInWithPopup(auth, provider);
+        };
+
+        window.logoutUser = async () => {
+            return signOut(auth);
+        };
+
+        // Oturum Durumu Takibi
+        onAuthStateChanged(auth, (user) => {
+            const loginSection = document.getElementById('loginSection');
+            const mainAppSection = document.getElementById('mainAppSection');
+            const userProfile = document.getElementById('userProfile');
+            const userNameDisplay = document.getElementById('userNameDisplay');
+
+            if (user) {
+                loginSection.classList.add('hidden');
+                mainAppSection.classList.remove('hidden');
+                userProfile.classList.remove('hidden');
+                userNameDisplay.innerText = user.displayName || user.email;
+                if (window.initFirebaseListener) window.initFirebaseListener();
+            } else {
+                loginSection.classList.remove('hidden');
+                mainAppSection.classList.add('hidden');
+                userProfile.classList.add('hidden');
+            }
+        });
+    </script>
+
+    <style>
+        .audit-card { transition: all 0.2s ease-in-out; }
+        .audit-card:hover { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .custom-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col justify-between">
+
+    <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- LOGIN EKRANI (Oturum kapalıyken görünür) -->
+    <div id="loginSection" class="fixed inset-0 bg-slate-900 bg-opacity-95 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl border border-purple-100 max-w-md w-full p-8 text-center space-y-6">
+            <div class="inline-flex p-4 bg-purple-100 rounded-full text-purple-800 mb-2">
+                <i class="fa-solid fa-user-shield text-4xl"></i>
+            </div>
+            <div>
+                <h2 class="text-2xl font-black text-slate-800 uppercase tracking-wide">Co-Owner Audit</h2>
+                <p class="text-xs text-slate-500 mt-1">Sisteme erişmek için lütfen giriş yapın</p>
+            </div>
+
+            <form id="loginForm" onsubmit="handleEmailLogin(event)" class="space-y-4 text-left">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">E-Posta</label>
+                    <input type="email" id="loginEmail" required placeholder="ad.soyad@firma.com" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-600 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Şifre</label>
+                    <input type="password" id="loginPassword" required placeholder="••••••••" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-600 focus:outline-none">
+                </div>
+                <button type="submit" class="w-full bg-purple-800 hover:bg-purple-900 text-white font-bold py-2.5 rounded-lg shadow transition cursor-pointer flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-right-to-bracket"></i> Giriş Yap
+                </button>
+            </form>
+
+                       
+        </div>
+    </div>
+
+    <!-- UYGULAMA ANA KAPSAYICI (Giriş yapıldıktan sonra açılır) -->
+    <div id="mainAppSection" class="hidden">
+        <header class="bg-purple-900 text-white shadow-lg border-b-4 border-purple-600 sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex flex-col md:flex-row justify-between items-center py-4 gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-purple-800 p-2.5 rounded-xl border border-purple-600">
+                            <i class="fa-solid fa-clipboard-check text-2xl text-purple-300"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl md:text-2xl font-extrabold tracking-wide uppercase">
+                                CO-OWNER AUDIT CHECKLIST
+                            </h1>
+                            <p class="text-purple-200 text-xs">Co-Owner Değerlendirme Sistemi</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <nav class="flex bg-purple-950 p-1.5 rounded-xl border border-purple-800/60 shadow-inner">
+                            <button id="tabFormBtn" onclick="switchTab('form')" class="px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all cursor-pointer bg-purple-600 text-white shadow">
+                                <i class="fa-solid fa-pen-to-square"></i> <span id="formTabLabel">Yeni Denetim</span>
+                            </button>
+                            <button id="tabDbBtn" onclick="switchTab('db')" class="px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all cursor-pointer text-purple-200 hover:text-white hover:bg-purple-800/50">
+                                <i class="fa-solid fa-database"></i> Kayıtlı Denetimler
+                                <span id="badgeAuditCount" class="bg-purple-500 text-white text-xs px-2 py-0.5 rounded-full font-extrabold">0</span>
+                            </button>
+                        </nav>
+
+                        <!-- Kullanıcı Profili ve Çıkış Yap -->
+                        <div id="userProfile" class="hidden flex items-center gap-3 bg-purple-950/70 border border-purple-800 px-3 py-1.5 rounded-xl">
+                            <i class="fa-solid fa-circle-user text-purple-300 text-xl"></i>
+                            <span id="userNameDisplay" class="text-xs font-semibold text-purple-100 max-w-[120px] truncate"></span>
+                            <button onclick="handleLogout()" title="Çıkış Yap" class="text-rose-300 hover:text-rose-100 text-sm ml-1 cursor-pointer">
+                                <i class="fa-solid fa-right-from-bracket"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+            <!-- TAB 1: FORM -->
+            <section id="formTabSection" class="space-y-8">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                    <div class="flex items-center gap-2 text-purple-950 font-bold text-lg">
+                        <i class="fa-solid fa-sliders text-purple-600"></i>
+                        <span id="formHeadingText">Yeni Audit Oluştur</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" onclick="resetForm()" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-rotate-left"></i> Formu Temizle
+                        </button>
+                        <button type="button" onclick="saveAuditRecord(false)" class="px-4 py-2 rounded-lg text-xs font-bold bg-purple-700 hover:bg-purple-800 text-white shadow-sm hover:shadow transition flex items-center gap-2 cursor-pointer">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Kaydet
+                        </button>
+                        <button type="button" onclick="saveAuditRecord(true)" class="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow transition flex items-center gap-2 cursor-pointer">
+                            <i class="fa-solid fa-file-excel"></i> Kaydet & Excel İndir
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div class="lg:col-span-8 bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+                        <h2 class="text-base font-bold text-purple-900 border-b pb-2 mb-4 flex items-center gap-2">
+                            <i class="fa-solid fa-circle-info text-purple-600"></i> Ticket Genel Bilgileri
+                        </h2>
+                        <input type="hidden" id="editingRecordId" value="">
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Ticket No: <span class="text-rose-500">*</span></label>
+                                <input type="text" id="ticketNo" placeholder="Örn: INC-1234" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-purple-500 focus:outline-none text-sm bg-slate-50 font-medium">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Ticket Type:</label>
+                                <select id="ticketType" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-purple-500 focus:outline-none text-sm bg-slate-50">
+                                    <option value="">Seçiniz...</option>
+                                    <option value="Incident">Incident</option>
+                                    <option value="Request for Information">Request for Information</option>
+                                    <option value="Technical Support">Technical Support</option>
+                                    <option value="Service Request">Service Request</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Assignee:</label>
+                                <select id="assignee" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-purple-500 focus:outline-none text-sm bg-slate-50">
+                                    <option value="">Seçiniz...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Co-owner:</label>
+                                <select id="coOwner" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-purple-500 focus:outline-none text-sm bg-slate-50">
+                                    <option value="">Seçiniz...</option>
+                                </select>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Auditor:</label>
+                                <select id="auditor" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-purple-500 focus:outline-none text-sm bg-slate-50">
+                                    <option value="">Seçiniz...</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                        <div>
+                            <h2 class="text-base font-bold text-purple-900 border-b pb-2 mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-chart-pie text-purple-600"></i> Canlı Sonuç Paneli
+                            </h2>
+                            <div class="flex justify-between items-center my-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                <span class="text-xs font-bold text-slate-600 uppercase">Hesaplanan Toplam Puan:</span>
+                                <span id="totalScore" class="text-3xl font-black text-purple-900">0</span>
+                            </div>
+                        </div>
+
+                        <div id="statusBox" class="p-4 rounded-xl border-2 text-center transition-all duration-300 bg-rose-50 border-rose-300 text-rose-700">
+                            <div class="text-[10px] uppercase font-bold tracking-wider mb-1">Genel Değerlendirme Durumu</div>
+                            <div id="statusText" class="text-xl font-black flex items-center justify-center gap-2">
+                                <i id="statusIcon" class="fa-solid fa-circle-xmark"></i> FAILED (BAŞARISIZ)
+                            </div>
+                            <p class="text-[11px] mt-1 opacity-80">Gereken Minimum Puan: 10</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="bg-white rounded-xl shadow-sm border-2 border-purple-300 overflow-hidden audit-card">
+                        <div class="bg-purple-900 text-white px-5 py-3 font-bold text-base flex justify-between items-center">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-star text-amber-400"></i> Genel Katkı</span>
+                            <span class="text-[11px] font-semibold bg-purple-800 px-3 py-0.5 rounded-full text-purple-200">En Yüksek Ağırlık</span>
+                        </div>
+                        <div class="p-4 divide-y divide-slate-100" id="cat-genel"></div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden audit-card">
+                            <div class="bg-purple-900 text-white px-5 py-3 font-bold text-base flex justify-between items-center"><span>Ticket</span></div>
+                            <div class="p-4 divide-y divide-slate-100" id="cat-ticket"></div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden audit-card">
+                            <div class="bg-purple-900 text-white px-5 py-3 font-bold text-base flex justify-between items-center"><span>Support Internal</span></div>
+                            <div class="p-4 divide-y divide-slate-100" id="cat-support"></div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden audit-card md:col-span-2">
+                            <div class="bg-purple-900 text-white px-5 py-3 font-bold text-base flex justify-between items-center"><span>Diğer Kanallar</span></div>
+                            <div class="p-4 divide-y divide-slate-100" id="cat-diger"></div>
+                        </div>
+
+                        <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-rose-200 overflow-hidden audit-card">
+                            <div class="bg-rose-800 text-white px-5 py-3 font-bold text-base flex justify-between items-center">
+                                <span class="flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i> Katkı Olarak Değerlendirilmez</span>
+                            </div>
+                            <div class="p-4 divide-y divide-slate-100" id="cat-negatif"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: BULUT VERİTABANI -->
+            <section id="dbTabSection" class="hidden space-y-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-slate-500 uppercase">Toplam Denetim</p>
+                            <h3 id="statTotal" class="text-2xl font-black text-slate-800 mt-1">0</h3>
+                        </div>
+                        <div class="w-12 h-12 bg-purple-100 text-purple-700 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-folder-open"></i></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-slate-500 uppercase">Başarılı (PASSED)</p>
+                            <h3 id="statPassed" class="text-2xl font-black text-emerald-600 mt-1">0</h3>
+                        </div>
+                        <div class="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-circle-check"></i></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-slate-500 uppercase">Başarısız (FAILED)</p>
+                            <h3 id="statFailed" class="text-2xl font-black text-rose-600 mt-1">0</h3>
+                        </div>
+                        <div class="w-12 h-12 bg-rose-100 text-rose-700 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-circle-xmark"></i></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-slate-500 uppercase">Ortalama Puan</p>
+                            <h3 id="statAvg" class="text-2xl font-black text-indigo-600 mt-1">0</h3>
+                        </div>
+                        <div class="w-12 h-12 bg-indigo-100 text-indigo-700 rounded-xl flex items-center justify-center text-xl"><i class="fa-solid fa-chart-line"></i></div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 justify-between items-center">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full md:w-auto flex-1">
+                        <input type="text" id="dbSearchInput" oninput="renderDatabaseTable()" placeholder="Ticket No ile ara..." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                        <select id="dbFilterStatus" onchange="renderDatabaseTable()" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                            <option value="">Tüm Durumlar</option>
+                            <option value="PASSED">Sadece PASSED</option>
+                            <option value="FAILED">Sadece FAILED</option>
+                        </select>
+                        <select id="dbFilterAuditor" onchange="renderDatabaseTable()" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                            <option value="">Tüm Auditorlar</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left text-sm border-collapse">
+                            <thead>
+                                <tr class="bg-purple-950 text-white text-xs font-bold uppercase tracking-wider">
+                                    <th class="p-3.5">Ticket No</th>
+                                    <th class="p-3.5">Assignee</th>
+                                    <th class="p-3.5">Co-owner</th>
+                                    <th class="p-3.5">Auditor</th>
+                                    <th class="p-3.5">Type</th>
+                                    <th class="p-3.5 text-center">Tarih</th>
+                                    <th class="p-3.5 text-center">Puan</th>
+                                    <th class="p-3.5 text-center">Sonuç</th>
+                                    <th class="p-3.5 text-right">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dbTableBody" class="divide-y divide-slate-200 text-slate-700"></tbody>
+                        </table>
+                    </div>
+                    <div id="emptyDbMessage" class="p-12 text-center text-slate-400 hidden">
+                        <i class="fa-solid fa-cloud text-4xl mb-3 text-slate-300"></i>
+                        <p class="font-medium text-slate-600">Bulut veritabanında henüz kayıt bulunmuyor.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <footer class="bg-slate-800 text-slate-400 text-xs py-4 text-center border-t border-slate-700 mt-12">
+        Co-Owner Audit Checklist System &bull; Firebase Cloud Firestore Bağlantılı Canlı Senkronize Sistem
+    </footer>
+
+    <script>
+        let globalRecords = [];
+
+        const teamMembers = ["Ahmet Keskin", "Batuhan Başyiğit", "Begüm Ekmekçi", "Burak Elver", "Çağla Loğoğlu", "Elif Naz Çendik", "Hamza Solmaz", "Işılay Kombak", "Mustafa Katlan", "Onur Tursun", "Özlen Güner", "Sedat Aydıncık", "Uğur Ertemel", "Zeynep Demir"];
+        const auditors = ["Batuhan Başyiğit", "Batuhan Onay", "Boğaç Coşkundeniz", "Zeynep Demir"];
+
+        const checklistData = {
+            genel: [
+                { id: "g1", text: "Co-owner olarak eklendikten sonra doğrulanabilir teknik katkı sağlamış. +", points: 8 },
+                { id: "g2", text: "Root cause veya çözüme yönelik katkı sağlamış. +", points: 8 }
+            ],
+            ticket: [
+                { id: "t1", text: "Dev-item açılmış.", points: 2 },
+                { id: "t2", text: "Imp-item açılmış.", points: 1 },
+                { id: "t3", text: "Ticket içine yorum eklenmiş.", points: 1 }
+            ],
+            support: [
+                { id: "s1", text: "Ticket ile ilgili teknik bilgi paylaşılmış.", points: 4 },
+                { id: "s2", text: "Müşteri cevabı hazırlanması için aktif katkı sağlamış. +", points: 3 },
+                { id: "s3", text: "Reproduce denemesi yapılmış ve sonucu paylaşılmış.", points: 2 },
+                { id: "s4", text: "Yeni bilgi veya benzer ticket/Jira paylaşılmış.", points: 1 },
+                { id: "s5", text: "Investigation sonucu paylaşılmış.", points: 1 },
+                { id: "s6", text: "Log, SQL, test sonucu paylaşılmış.", points: 1 }
+            ],
+            diger: [
+                { id: "d1", text: "Ticket ile ilgili teknik katkı sağlamış.", points: 4 },
+                { id: "d2", text: "Diğer ekiplerle zoom/huddle yapıp ticket incelemiş.", points: 3 },
+                { id: "d3", text: "Investigation sonucu paylaşılmış.", points: 1 },
+                { id: "d4", text: "Başka ekibe bilgi verilmiş veya soru cevaplanmış.", points: 1 }
+            ],
+            negatif: [
+                { id: "n1", text: "Sadece \"Bakıyorum\", \"Kontrol ediyoruz\" gibi durum bildirimi yapılması.", points: -10 },
+                { id: "n2", text: "Sadece \"Bilgi vereceğiz.\" şeklinde dönüş yapılması.", points: -10 },
+                { id: "n3", text: "Yalnızca co-owner olarak atanmış olması.", points: -20 }
+            ]
+        };
+
+        // LOGIN HANDLERS
+        async function handleEmailLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            try {
+                await window.loginWithEmail(email, password);
+                showToast("Başarıyla giriş yapıldı.");
+            } catch (error) {
+                showToast("Giriş hatası: " + error.message, "error");
+            }
+        }
+
+        async function handleGoogleLogin() {
+            try {
+                await window.loginWithGoogle();
+                showToast("Google ile giriş yapıldı.");
+            } catch (error) {
+                showToast("Google giriş hatası: " + error.message, "error");
+            }
+        }
+
+        async function handleLogout() {
+            try {
+                await window.logoutUser();
+                showToast("Çıkış yapıldı.");
+            } catch (error) {
+                showToast("Çıkış yapılırken hata oluştu.", "error");
+            }
+        }
+
+        // FIREBASE CANLI DİNLEME (OnSnapshot)
+        function initFirebaseListener() {
+            if (window.db && window.firestoreTools) {
+                const { collection, onSnapshot, query } = window.firestoreTools;
+                const q = query(collection(window.db, "audits"));
+                onSnapshot(q, (snapshot) => {
+                    globalRecords = [];
+                    snapshot.forEach((doc) => {
+                        globalRecords.push({ id: doc.id, ...doc.data() });
+                    });
+                    
+                    const badge = document.getElementById('badgeAuditCount');
+                    if(badge) badge.innerText = globalRecords.length;
+                    renderDatabaseTable();
+                }, (error) => {
+                    console.error("Firebase dinleme hatası:", error);
+                    showToast("Bulut veritabanına erişilemedi! Bağlantınızı kontrol edin.", "error");
+                });
+            }
+        }
+        window.initFirebaseListener = initFirebaseListener;
+
+        function showToast(message, type = "success") {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-emerald-800 border-emerald-500' : 'bg-rose-800 border-rose-500';
+            const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation';
+
+            toast.className = `${bgColor} text-white px-4 py-3 rounded-lg border shadow-lg flex items-center gap-3 text-sm font-semibold transform transition-all duration-300 pointer-events-auto translate-y-2 opacity-0`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function populateDropdowns() {
+            const assigneeSelect = document.getElementById('assignee');
+            const coOwnerSelect = document.getElementById('coOwner');
+            const auditorSelect = document.getElementById('auditor');
+            const dbFilterAuditor = document.getElementById('dbFilterAuditor');
+
+            teamMembers.forEach(person => {
+                assigneeSelect.add(new Option(person, person));
+                coOwnerSelect.add(new Option(person, person));
+            });
+
+            auditors.forEach(person => {
+                auditorSelect.add(new Option(person, person));
+                dbFilterAuditor.add(new Option(person, person));
+            });
+        }
+
+        function renderChecklist() {
+            const categories = [
+                { key: 'genel', containerId: 'cat-genel' },
+                { key: 'ticket', containerId: 'cat-ticket' },
+                { key: 'support', containerId: 'cat-support' },
+                { key: 'diger', containerId: 'cat-diger' },
+                { key: 'negatif', containerId: 'cat-negatif' }
+            ];
+
+            categories.forEach(cat => {
+                const container = document.getElementById(cat.containerId);
+                container.innerHTML = "";
+                checklistData[cat.key].forEach(item => {
+                    const isNegative = item.points < 0;
+                    const badgeClass = isNegative ? 'bg-rose-100 text-rose-800' : 'bg-purple-100 text-purple-800';
+
+                    const itemHtml = `
+                        <div class="py-3 flex items-center justify-between gap-4">
+                            <label for="${item.id}" class="flex-1 text-sm font-medium text-slate-700 cursor-pointer select-none leading-tight">
+                                ${item.text}
+                            </label>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs font-bold px-2.5 py-1 rounded-md ${badgeClass}">
+                                    ${item.points > 0 ? '+' + item.points : item.points} Puan
+                                </span>
+                                <input type="checkbox" id="${item.id}" data-points="${item.points}" onchange="calculateScore()" 
+                                    class="w-5 h-5 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer accent-purple-700">
+                            </div>
+                        </div>
+                    `;
+                    container.insertAdjacentHTML('beforeend', itemHtml);
+                });
+            });
+        }
+
+        function calculateScore() {
+            let totalScore = 0;
+            const checkboxes = document.querySelectorAll('#formTabSection input[type="checkbox"]');
+            checkboxes.forEach(cb => { if (cb.checked) totalScore += parseInt(cb.getAttribute('data-points'), 10); });
+
+            document.getElementById('totalScore').innerText = totalScore;
+            const statusBox = document.getElementById('statusBox');
+            const statusText = document.getElementById('statusText');
+
+            if (totalScore >= 10) {
+                statusBox.className = "p-4 rounded-xl border-2 text-center transition-all duration-300 bg-emerald-50 border-emerald-400 text-emerald-800 shadow-sm";
+                statusText.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> PASSED (GEÇTİ)`;
+            } else {
+                statusBox.className = "p-4 rounded-xl border-2 text-center transition-all duration-300 bg-rose-50 border-rose-300 text-rose-700";
+                statusText.innerHTML = `<i class="fa-solid fa-circle-xmark text-rose-600"></i> FAILED (BAŞARISIZ)`;
+            }
+            return totalScore;
+        }
+
+        // FIREBASE BULUTA KAYDET
+        async function saveAuditRecord(andDownloadExcel = false) {
+            const ticketNo = document.getElementById('ticketNo').value.trim();
+            if (!ticketNo) {
+                showToast("Lütfen bir Ticket No giriniz!", "error");
+                document.getElementById('ticketNo').focus();
+                return;
+            }
+
+            const assignee = document.getElementById('assignee').value;
+            const coOwner = document.getElementById('coOwner').value;
+            const auditor = document.getElementById('auditor').value;
+            const ticketType = document.getElementById('ticketType').value;
+            const totalScore = calculateScore();
+            const isPassed = totalScore >= 10;
+            const editingId = document.getElementById('editingRecordId').value;
+
+            const checkedState = {};
+            document.querySelectorAll('#formTabSection input[type="checkbox"]').forEach(cb => {
+                checkedState[cb.id] = cb.checked;
+            });
+
+            const recordData = {
+                ticketNo, assignee, coOwner, auditor, ticketType,
+                totalScore, isPassed, checkedState,
+                createdAt: new Date().toISOString()
+            };
+
+            const { collection, addDoc, updateDoc, doc } = window.firestoreTools;
+
+            try {
+                if (editingId) {
+                    await updateDoc(doc(window.db, "audits", editingId), recordData);
+                    showToast("Buluttaki kayıt güncellendi.");
+                } else {
+                    await addDoc(collection(window.db, "audits"), recordData);
+                    showToast("Bulut veritabanına eklendi!");
+                }
+
+                if (andDownloadExcel) {
+                    exportRecordToStyledExcel(recordData);
+                }
+                resetForm();
+            } catch (e) {
+                console.error("Kaydetme Hatası:", e);
+                showToast("Buluta kaydederken hata oluştu!", "error");
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('editingRecordId').value = "";
+            document.getElementById('ticketNo').value = "";
+            document.getElementById('assignee').value = "";
+            document.getElementById('coOwner').value = "";
+            document.getElementById('auditor').value = "";
+            document.getElementById('ticketType').value = "";
+            document.getElementById('formHeadingText').innerText = "Yeni Ticket Denetimi Oluştur";
+            document.getElementById('formTabLabel').innerText = "Yeni Denetim";
+
+            document.querySelectorAll('#formTabSection input[type="checkbox"]').forEach(cb => cb.checked = false);
+            calculateScore();
+        }
+
+        function editRecord(id) {
+            const record = globalRecords.find(r => r.id === id);
+            if (!record) return;
+
+            document.getElementById('editingRecordId').value = record.id;
+            document.getElementById('ticketNo').value = record.ticketNo || "";
+            document.getElementById('assignee').value = record.assignee || "";
+            document.getElementById('coOwner').value = record.coOwner || "";
+            document.getElementById('auditor').value = record.auditor || "";
+            document.getElementById('ticketType').value = record.ticketType || "";
+
+            document.querySelectorAll('#formTabSection input[type="checkbox"]').forEach(cb => {
+                cb.checked = !!(record.checkedState && record.checkedState[cb.id]);
+            });
+
+            calculateScore();
+            document.getElementById('formHeadingText').innerText = `Denetim Düzenle: ${record.ticketNo}`;
+            document.getElementById('formTabLabel').innerText = "Denetim Düzenle";
+            switchTab('form');
+        }
+
+        async function deleteRecord(id) {
+            if (!confirm("Bu denetim kaydını silmek istediğinize emin misiniz?")) return;
+            try {
+                const { deleteDoc, doc } = window.firestoreTools;
+                await deleteDoc(doc(window.db, "audits", id));
+                showToast("Kayıt silindi.");
+            } catch (e) {
+                showToast("Silinirken hata oluştu!", "error");
+            }
+        }
+
+        function switchTab(tab) {
+            const formTabSection = document.getElementById('formTabSection');
+            const dbTabSection = document.getElementById('dbTabSection');
+            const tabFormBtn = document.getElementById('tabFormBtn');
+            const tabDbBtn = document.getElementById('tabDbBtn');
+
+            if (tab === 'form') {
+                formTabSection.classList.remove('hidden');
+                dbTabSection.classList.add('hidden');
+                tabFormBtn.className = "px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all cursor-pointer bg-purple-600 text-white shadow";
+                tabDbBtn.className = "px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all cursor-pointer text-purple-200 hover:text-white hover:bg-purple-800/50";
+            } else {
+                formTabSection.classList.add('hidden');
+                dbTabSection.classList.remove('hidden');
+                tabDbBtn.className = "px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all cursor-pointer bg-purple-600 text-white shadow";
+                tabFormBtn.className = "px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all cursor-pointer text-purple-200 hover:text-white hover:bg-purple-800/50";
+                renderDatabaseTable();
+            }
+        }
+
+        function renderDatabaseTable() {
+            const searchInput = document.getElementById('dbSearchInput').value.toLowerCase();
+            const filterStatus = document.getElementById('dbFilterStatus').value;
+            const filterAuditor = document.getElementById('dbFilterAuditor').value;
+
+            const totalCount = globalRecords.length;
+            const passedCount = globalRecords.filter(r => r.isPassed).length;
+            const failedCount = totalCount - passedCount;
+            const avgScore = totalCount > 0 ? (globalRecords.reduce((acc, r) => acc + (r.totalScore || 0), 0) / totalCount).toFixed(1) : "0";
+
+            document.getElementById('statTotal').innerText = totalCount;
+            document.getElementById('statPassed').innerText = passedCount;
+            document.getElementById('statFailed').innerText = failedCount;
+            document.getElementById('statAvg').innerText = avgScore;
+
+            const filtered = globalRecords.filter(r => {
+                const matchSearch = !searchInput || (r.ticketNo && r.ticketNo.toLowerCase().includes(searchInput));
+                const matchStatus = !filterStatus || (filterStatus === 'PASSED' ? r.isPassed : !r.isPassed);
+                const matchAuditor = !filterAuditor || r.auditor === filterAuditor;
+                return matchSearch && matchStatus && matchAuditor;
+            });
+
+            const tbody = document.getElementById('dbTableBody');
+            const emptyMsg = document.getElementById('emptyDbMessage');
+            tbody.innerHTML = "";
+
+            if (filtered.length === 0) {
+                emptyMsg.classList.remove('hidden');
+                return;
+            } else {
+                emptyMsg.classList.add('hidden');
+            }
+
+            filtered.forEach(r => {
+                const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+                const statusBadge = r.isPassed 
+                    ? `<span class="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold px-2.5 py-1 rounded-full"><i class="fa-solid fa-check"></i> PASSED</span>`
+                    : `<span class="bg-rose-100 text-rose-800 border border-rose-300 text-xs font-bold px-2.5 py-1 rounded-full"><i class="fa-solid fa-xmark"></i> FAILED</span>`;
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-purple-50/50 transition border-b border-slate-100";
+                tr.innerHTML = `
+                    <td class="p-3.5 font-bold text-purple-900">${r.ticketNo || '-'}</td>
+                    <td class="p-3.5 text-xs font-medium">${r.assignee || '-'}</td>
+                    <td class="p-3.5 text-xs font-medium">${r.coOwner || '-'}</td>
+                    <td class="p-3.5 text-xs font-medium">${r.auditor || '-'}</td>
+                    <td class="p-3.5 text-xs"><span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold">${r.ticketType || '-'}</span></td>
+                    <td class="p-3.5 text-center text-xs text-slate-500">${dateStr}</td>
+                    <td class="p-3.5 text-center font-extrabold text-base">${r.totalScore}</td>
+                    <td class="p-3.5 text-center">${statusBadge}</td>
+                    <td class="p-3.5 text-right">
+                        <div class="flex items-center justify-end gap-1.5">
+                            <button onclick="editRecord('${r.id}')" title="İncele & Düzenle" class="p-1.5 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded transition cursor-pointer">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </button>
+                            <button onclick="exportRecordById('${r.id}')" title="Excel İndir" class="p-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded transition cursor-pointer">
+                                <i class="fa-solid fa-file-excel"></i>
+                            </button>
+                            <button onclick="deleteRecord('${r.id}')" title="Sil" class="p-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded transition cursor-pointer">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function exportRecordById(id) {
+            const record = globalRecords.find(r => r.id === id);
+            if (record) exportRecordToStyledExcel(record);
+        }
+
+        function exportRecordToStyledExcel(record) {
+            const { ticketNo = "", assignee = "", coOwner = "", auditor = "", ticketType = "", totalScore = 0, isPassed = false, checkedState = {} } = record;
+            const isChecked = (id) => !!checkedState[id];
+            const getTF = (id) => isChecked(id) ? ["DOĞRU", "YANLIŞ"] : ["YANLIŞ", "YANLIŞ"];
+            const val = (id, idx) => getTF(id)[idx];
+
+            const excelHTML = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+                <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+                <style>
+                    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; }
+                    table { border-collapse: collapse; width: 100%; }
+                    td, th { border: 1px solid #000000; padding: 4px 8px; vertical-align: middle; }
+                    .header-title { background-color: #4A154B; color: #FFFFFF; font-size: 16pt; font-weight: bold; text-align: center; height: 35px; }
+                    .section-header { color: #5B0E2D; font-weight: bold; font-size: 13pt; border: none; }
+                    .cat-purple-text { color: #5B0E2D; font-weight: bold; font-size: 12pt; border: none; }
+                    .tbl-header { font-weight: bold; text-align: center; background-color: #FFFFFF; }
+                    .bold-title { font-weight: bold; }
+                    .center-text { text-align: center; }
+                    .passed-cell { background-color: #D4EDDA; color: #155724; font-weight: bold; text-align: center; }
+                    .failed-cell { background-color: #F8D7DA; color: #721C24; font-weight: bold; text-align: center; }
+                    .no-border { border: none !important; }
+                </style>
+            </head>
+            <body>
+                <table>
+                    <colgroup>
+                        <col width="320"><col width="90"><col width="90"><col width="70"><col width="30">
+                        <col width="320"><col width="90"><col width="90"><col width="70">
+                    </colgroup>
+                    <tr><td colspan="9" class="header-title">CO-OWNER AUDIT CHECKLIST</td></tr>
+                    <tr class="no-border"><td colspan="9" class="no-border"></td></tr>
+                    <tr>
+                        <td class="bold-title">Ticket No:</td><td colspan="3">${ticketNo}</td><td class="no-border"></td>
+                        <td class="section-header">Ticket</td><td class="tbl-header">Evet</td><td class="tbl-header">Hayır</td><td class="tbl-header">Puan</td>
+                    </tr>
+                    <tr>
+                        <td class="bold-title">Assignee:</td><td colspan="3">${assignee}</td><td class="no-border"></td>
+                        <td>${checklistData.ticket[0].text}</td><td class="center-text">${val('t1', 0)}</td><td class="center-text">${val('t1', 1)}</td><td class="center-text">${checklistData.ticket[0].points}</td>
+                    </tr>
+                    <tr>
+                        <td class="bold-title">Co-owner:</td><td colspan="3">${coOwner}</td><td class="no-border"></td>
+                        <td>${checklistData.ticket[1].text}</td><td class="center-text">${val('t2', 0)}</td><td class="center-text">${val('t2', 1)}</td><td class="center-text">${checklistData.ticket[1].points}</td>
+                    </tr>
+                    <tr>
+                        <td class="bold-title">Auditor:</td><td colspan="3">${auditor}</td><td class="no-border"></td>
+                        <td>${checklistData.ticket[2].text}</td><td class="center-text">${val('t3', 0)}</td><td class="center-text">${val('t3', 1)}</td><td class="center-text">${checklistData.ticket[2].points}</td>
+                    </tr>
+                    <tr>
+                        <td class="bold-title">Ticket Type:</td><td colspan="3">${ticketType}</td><td class="no-border"></td>
+                        <td colspan="4" class="no-border"></td>
+                    </tr>
+                    <tr class="no-border"><td colspan="9" class="no-border"></td></tr>
+                    <tr>
+                        <td class="no-border"></td><td class="no-border"></td>
+                        <td class="tbl-header">Evet<br>&ge;10</td><td class="tbl-header">Hayır<br>&lt;10</td><td class="tbl-header">Toplam Puan<br>(Min 10)</td>
+                        <td class="no-border"></td><td colspan="3" class="no-border"></td>
+                    </tr>
+                    <tr>
+                        <td class="bold-title">Genel Sonuç:</td><td class="no-border"></td>
+                        <td class="${isPassed ? 'passed-cell' : 'center-text'}">${isPassed ? 'DOĞRU' : 'YANLIŞ'}</td>
+                        <td class="${!isPassed ? 'failed-cell' : 'center-text'}">${!isPassed ? 'DOĞRU' : 'YANLIŞ'}</td>
+                        <td class="center-text bold-title">${totalScore}</td>
+                        <td class="section-header">Support Internal</td><td class="tbl-header">Evet</td><td class="tbl-header">Hayır</td><td class="tbl-header">Puan</td>
+                    </tr>
+                    <tr>
+                        <td class="no-border"></td><td class="no-border"></td><td class="no-border"></td><td class="no-border"></td><td class="no-border"></td>
+                        <td>${checklistData.support[0].text}</td><td class="center-text">${val('s1', 0)}</td><td class="center-text">${val('s1', 1)}</td><td class="center-text">${checklistData.support[0].points}</td>
+                    </tr>
+                    <tr>
+                        <td class="cat-purple-text">Genel Katkı</td><td class="tbl-header">Evet</td><td class="tbl-header">Hayır</td><td class="tbl-header">Puan</td><td class="no-border"></td>
+                        <td>${checklistData.support[1].text}</td><td class="center-text">${val('s2', 0)}</td><td class="center-text">${val('s2', 1)}</td><td class="center-text">${checklistData.support[1].points}</td>
+                    </tr>
+                    <tr>
+                        <td>${checklistData.genel[0].text}</td><td class="center-text">${val('g1', 0)}</td><td class="center-text">${val('g1', 1)}</td><td class="center-text">${checklistData.genel[0].points}</td><td class="no-border"></td>
+                        <td>${checklistData.support[2].text}</td><td class="center-text">${val('s3', 0)}</td><td class="center-text">${val('s3', 1)}</td><td class="center-text">${checklistData.support[2].points}</td>
+                    </tr>
+                    <tr>
+                        <td>${checklistData.genel[1].text}</td><td class="center-text">${val('g2', 0)}</td><td class="center-text">${val('g2', 1)}</td><td class="center-text">${checklistData.genel[1].points}</td><td class="no-border"></td>
+                        <td>${checklistData.support[3].text}</td><td class="center-text">${val('s4', 0)}</td><td class="center-text">${val('s4', 1)}</td><td class="center-text">${checklistData.support[3].points}</td>
+                    </tr>
+                    <tr>
+                        <td class="no-border"></td><td class="no-border"></td><td class="no-border"></td><td class="no-border"></td><td class="no-border"></td>
+                        <td>${checklistData.support[4].text}</td><td class="center-text">${val('s5', 0)}</td><td class="center-text">${val('s5', 1)}</td><td class="center-text">${checklistData.support[4].points}</td>
+                    </tr>
+                    <tr>
+                        <td class="no-border"></td><td class="no-border"></td><td class="no-border"></td><td class="no-border"></td><td class="no-border"></td>
+                        <td>${checklistData.support[5].text}</td><td class="center-text">${val('s6', 0)}</td><td class="center-text">${val('s6', 1)}</td><td class="center-text">${checklistData.support[5].points}</td>
+                    </tr>
+                    <tr class="no-border"><td colspan="9" class="no-border"></td></tr>
+                    <tr>
+                        <td class="no-border"></td><td class="no-border"></td><td class="no-border"></td><td class="no-border"></td><td class="no-border"></td>
+                        <td class="section-header">Diğer Kanallar</td><td class="tbl-header">Evet</td><td class="tbl-header">Hayır</td><td class="tbl-header">Puan</td>
+                    </tr>
+                    <tr>
+                        <td class="cat-purple-text">Katkı Olarak Değerlendirilmez</td><td class="tbl-header">Evet</td><td class="tbl-header">Hayır</td><td class="tbl-header">Puan</td><td class="no-border"></td>
+                        <td>${checklistData.diger[0].text}</td><td class="center-text">${val('d1', 0)}</td><td class="center-text">${val('d1', 1)}</td><td class="center-text">${checklistData.diger[0].points}</td>
+                    </tr>
+                    <tr>
+                        <td>${checklistData.negatif[0].text}</td><td class="center-text">${val('n1', 0)}</td><td class="center-text">${val('n1', 1)}</td><td class="center-text">${checklistData.negatif[0].points}</td><td class="no-border"></td>
+                        <td>${checklistData.diger[1].text}</td><td class="center-text">${val('d2', 0)}</td><td class="center-text">${val('d2', 1)}</td><td class="center-text">${checklistData.diger[1].points}</td>
+                    </tr>
+                    <tr>
+                        <td>${checklistData.negatif[1].text}</td><td class="center-text">${val('n2', 0)}</td><td class="center-text">${val('n2', 1)}</td><td class="center-text">${checklistData.negatif[1].points}</td><td class="no-border"></td>
+                        <td>${checklistData.diger[2].text}</td><td class="center-text">${val('d3', 0)}</td><td class="center-text">${val('d3', 1)}</td><td class="center-text">${checklistData.diger[2].points}</td>
+                    </tr>
+                    <tr>
+                        <td>${checklistData.negatif[2].text}</td><td class="center-text">${val('n3', 0)}</td><td class="center-text">${val('n3', 1)}</td><td class="center-text">${checklistData.negatif[2].points}</td><td class="no-border"></td>
+                        <td>${checklistData.diger[3].text}</td><td class="center-text">${val('d4', 0)}</td><td class="center-text">${val('d4', 1)}</td><td class="center-text">${checklistData.diger[3].points}</td>
+                    </tr>
+                </table>
+            </body>
+            </html>`;
+
+            const blob = new Blob([excelHTML], { type: 'application/vnd.ms-excel;charset=utf-8' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `CoOwner_Audit_${ticketNo ? ticketNo : 'Record'}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        window.onload = function() {
+            populateDropdowns();
+            renderChecklist();
+            calculateScore();
+        };
+    </script>
+</body>
+</html>
